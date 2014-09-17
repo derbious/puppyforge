@@ -12,58 +12,50 @@ import (
 	"path/filepath"
 	"strings"
   "fmt"
+  "strconv"
+  "math"
 )
 
 
-// Read all of the metadata out of all of the .tar.gz files in the modulePath
-func ReadMetadata(modulePath string) ([]Metadata, error) {
-  metadata := make([]Metadata, 0)
-  log.Println("in func ReadMetadata")
+func ReadModuleReleases(modulePath string) ([]ModuleRelease, error) {
+  releases := make([]ModuleRelease, 0)
   //see if this directory exists.
   files, err := ioutil.ReadDir(modulePath)
   if err != nil {
-    log.Println(err)
-    return metadata, err
+    return releases, err
   }
+
   for _, file := range files {
     if strings.HasSuffix(file.Name(), ".tar.gz") {
       m, err := ExtractMetadata(file, modulePath)
       if err != nil {
-        log.Printf("Error reading file %s: %s\n", file.Name(), err)
-      }else{
-        log.Println(m)
+        log.Fatal("Error reading file %s: %s\n", file.Name(), err)
       }
-      metadata = append(metadata, m)
+      splitName := strings.Split(m.Name, "-")
+      modUser := splitName[0]
+      modName := splitName[1]
+
+      // gen the Md5 sum
+      md5, err := Checksum(filepath.Join(modulePath, file.Name()))
+      if err != nil {
+        log.Fatal("checksum failed")
+      }
+      var release ModuleRelease
+      release.Uri = fmt.Sprintf("/v3/releases/%s-%s", m.Name, m.Version)
+      release.Module.Uri = fmt.Sprintf("/v3/modules/%s", m.Name)
+      release.Module.Name = modName
+      release.Module.Owner = Owner { modUser }
+      release.Version = m.Version
+      release.Metadata = m
+      release.Tags = make([]string, 0)
+      release.FileUri = fmt.Sprintf("/v3/files/%s-%s.tar.gz", m.Name, m.Version)
+      release.FileMd5 = md5
+
+      releases = append(releases, release)
     }
   }
-  return metadata, nil
+  return releases, nil
 }
-
-
-// ListModules returns all tar.gz files
-//func ListModules(path string) []Metadata {
-//	var result []Metadata
-//	files, err := ioutil.ReadDir(path)
-//	if err != nil {
-//		log.Println(err)
-//	}
-//	for _, file := range files {
-//		if strings.HasSuffix(file.Name(), ".tar.gz") {
-//			err := ExtractMetadata(file, path)
-//			if err != nil {
-//				log.Println(err)
-//				continue
-//			}
-//			metadata, err := readMetadata(filepath.Join(path, file.Name()+".metadata"))
-//			if err != nil {
-//				log.Println(err)
-//				continue
-//			}
-//			result = append(result, metadata)
-//		}
-//	}
-//	return result
-//}
 
 //Extract metadata from module file
 func ExtractMetadata(module os.FileInfo, path string) (Metadata, error) {
@@ -92,7 +84,6 @@ func ExtractMetadata(module os.FileInfo, path string) (Metadata, error) {
       return m, err
     }
     if strings.HasSuffix(header.Name, "/metadata.json") {
-      log.Println("found the manifest!")
       //extract info
       data, err := ioutil.ReadAll(tr)
       if err != nil { continue }
@@ -105,60 +96,64 @@ func ExtractMetadata(module os.FileInfo, path string) (Metadata, error) {
 }
 
 
-// Iterate through the files in the archive.
-//	for {
-//		hdr, err := tr.Next()
-//		if err == io.EOF {
-//			return errors.New("metadata.json not found in " + moduleFile)
-//		}
-//		if err != nil {
-//			return err
-//		}
-//		// Found metadata.json, no need to read any further.
-//		if hdr.Name == strings.TrimRight(module.Name(), "tar.gz")+"/metadata.json" {
-//			f, err := os.Create(metadataPath)
-//			defer f.Close()
-//			if err != nil {
-//				return err
-//			}
-//			io.Copy(f, tr)
-//			return nil
-//		}
-//	}
-//}
+func MaxOf(n []string) (uint32, error) {
+  var m, max uint32
+  var tmp int64
+  tmp,  err := strconv.ParseInt(n[0], 10, 32)
+  if err != nil { return 0, err }
+  max = uint32(tmp)
+  for i := 1; i<len(n); i++ {
+    tmp, err := strconv.ParseInt(n[i], 10, 32)
+    if err != nil { return 0, err }
+    m = uint32(tmp)
+    if m > max {
+      max = m
+    }
+  }
+  return max, nil
+}
 
-//func readMetadata(file string) (Metadata, error) {
-//	var m Metadata
-//	data, err := ioutil.ReadFile(file)
-//	if err != nil {
-//		return m, err
-//	}
-//	json.Unmarshal(data, &m)
-//	return m, nil
-//}
 
-// ListModules returns all tar.gz files
-//func ListModules(path string) []Metadata {
-//	var result []Metadata
-//	files, err := ioutil.ReadDir(path)
-//	if err != nil {
-//		log.Println(err)
-//	}
-//	for _, file := range files {
-//		if strings.HasSuffix(file.Name(), ".tar.gz") {
-//			err := ExtractMetadata(file, path)
-//			if err != nil {
-//				log.Println(err)
-//				continue
-//			}
-//			metadata, err := readMetadata(filepath.Join(path, file.Name()+".metadata"))
-//			if err != nil {
-//				log.Println(err)
-//				continue
-//			}
-//			result = append(result, metadata)
-//		}
-//	}
-//	return result
-//}
+func CompareVersion(a, b string) (int, error) {
+  if a == b {
+    return 0, nil
+  }else{
+    aParts := strings.Split(a, ".")
+    bParts := strings.Split(b, ".")
+    // find the max int.
+    nums := append(aParts, bParts...)
+    mb, err := MaxOf(nums)
+    if err != nil { return 0, err }
+    var base uint32 = 10
+    if mb > base {
+      base = mb+1
+    }
+    maxParts := len(aParts)
+    if len(bParts) > maxParts{
+      maxParts = len(bParts)
+    }
+
+    // calculate A value
+    var aVal float64 = 0.0
+    for i := 0; i< len(aParts); i++ {
+      exponent := maxParts-(i+1)
+      tmp,_ := strconv.ParseInt(aParts[i], 10, 32)  //ignore error, it has already pasese
+      aVal += float64(tmp)*math.Pow(float64(base), float64(exponent))
+    }
+    // calculate B value
+    var bVal float64 = 0.0
+    for i := 0; i< len(bParts); i++ {
+      exponent := maxParts-(i+1)
+      tmp,_ := strconv.ParseInt(bParts[i], 10, 32)  //ignore error, it has already pasese
+      bVal += float64(tmp)*math.Pow(float64(base), float64(exponent))
+    }
+    if aVal > bVal {
+      return 1, nil
+    }else if aVal < bVal {
+      return -1, nil
+    }else{
+      return 0, nil
+    }
+  }
+}
 

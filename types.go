@@ -1,34 +1,49 @@
 package main
 
-
-// Define all of the types that will be using in other files
-type Dependencies struct {
-	Name         string `json:"name"`
-	VersionRange string `json:"version_requirement"`
+type Requirement struct {
+  Name        string     `json:"name"`
+	VersionReq  string     `json:"version_requirement"`
 }
 
-// This is the required amount of metadata for any puppet forge module
+// Metadata is populated by the metadata.json file in the tar.gz file
 type Metadata struct {
-	Name         string         `json:"name"`
-	Version      string         `json:"version"`
-	Author       string         `json:"author"`
-	Licence      string         `json:"license"`
-  Summary      string         `json:"summary"`
-  Source       string         `json:"source"`
-	Dependencies []Dependencies `json:"dependencies"`
+	Name          string            `json:"name"`
+	Version       string            `json:"version"`
+	Author        string            `json:"author"`
+	Licence       string            `json:"license"`
+  Summary       string            `json:"summary"`
+  Source        string            `json:"source"`
+  Requirements  []Requirement    `json:"requirements"`
+  Dependencies  []Requirement    `json:"dependencies"`
+  OSSupport     []struct {
+                  Name          string     `json:"operatingsystem"`
+                  Releases      []string   `json:"operatingsystemrelease"`
+                } `json:"operatingsystem_support"`
 }
+
 
 type Owner struct {
   Username    string  `json:"username"`
 }
 
-type Release struct {
-  Uri       string  `json:"uri"`
-  Version   string  `json:"version"`
-  Supported bool    `json:"supported"`
+type Pagination struct {
+	Next        *string `json:"next"`
 }
 
-type CurrentRelease struct {
+type ReleaseSummary struct {
+  Uri         string  `json:"uri"`
+  Version     string  `json:"version"`
+  Supported   bool    `json:"supported"`
+}
+type ReleaseSummaries []ReleaseSummary
+func (r ReleaseSummaries) Len() int { return len(r) }
+func (r ReleaseSummaries) Swap(i, j int) { r[i], r[j] = r[j], r[i] }
+func (r ReleaseSummaries) Less(i, j int) bool {
+  res,_ := CompareVersion(r[i].Version, r[j].Version)
+  return res < 0
+}
+
+type ModuleRelease struct {
   Uri    string      `json:"uri"`
   Module struct {
     Uri    string      `json:"uri"`
@@ -42,21 +57,25 @@ type CurrentRelease struct {
   FileMd5  string    `json:"file_md5"`
 }
 
-type Result struct {
-	Uri      string    `json:"uri"`
-  Name     string    `json:"name"`
-  Owner    Owner     `json:"owner"`
-  CurrentRelease     `json:"current_release"`
-  Releases []Release `json:"releases"`
+type ModulesResult struct {
+	Uri             string            `json:"uri"`
+  Name            string            `json:"name"`
+  Owner           Owner             `json:"owner"`
+  CurrentRelease  ModuleRelease     `json:"current_release"`
+  Releases        ReleaseSummaries  `json:"releases"`
 }
 
-type Pagination struct {
-	Next *string `json:"next"`
-}
-
-type Response struct {
+type ModulesResponse struct {
 	Pagination struct {
     Next *string `json:"next"`
   } `json:"pagination"`
-	Results  []Result `json:"results"`
+	Results  []ModulesResult `json:"results"`
 }
+
+type ReleasesResponse struct {
+	Pagination struct {
+    Next *string `json:"next"`
+  } `json:"pagination"`
+	Results  []ModuleRelease  `json:"results"`
+}
+

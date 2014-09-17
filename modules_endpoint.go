@@ -3,80 +3,80 @@ package main
 import (
   "encoding/json"
 	"fmt"
-	"log"
+	//"log"
 	"net/http"
   "strings"
   "bytes"
+  "sort"
 )
 
-func ModulesHandler(w http.ResponseWriter, r *http.Request, modulePath string) {
-  // read all of the metadata of all of the files in the modulePath
-  metadata, err := ReadMetadata(modulePath)
-  if err != nil {
-    log.Println("ERROR:", err)
-    return
-  }
-  log.Println(metadata)
 
+func ModulesHandler(w http.ResponseWriter, r *http.Request, modulePath string) {
+  // read all of the release information for all of the files in the modPath
+  releases, err := ReadModuleReleases(modulePath)
+  if err != nil {
+    http.Error(w, "Unable to read module files", 500)
+  }
   if r.URL.Path == "/v3/modules" || r.URL.Path == "/v3/modules/" {
     queryParams := r.URL.Query()
     if queryParams["query"] != nil {
       moduleName := queryParams["query"][0]
-      log.Println("querying for a module", moduleName)
 
+      var releaseSummaries ReleaseSummaries
+      modulesLatest := make(map[string]string)
+      var currentRelease ModuleRelease
 
-      var resp Response  // the empty response
-      resp.Results = make([]Result, 0)
+      for _, release := range releases {
+        // if the version is greater than the current release, upgadea
+        // the current release. otherwise, add a new release summary.
+        if release.Metadata.Name == moduleName {
+          rs := ReleaseSummary {
+            Uri: fmt.Sprintf("/v3/modules/%s-%s",
+                             release.Module.Name,
+                             release.Version),
+            Version: release.Version,
+            Supported: true,
+          }
 
-      for _, m := range metadata {
-        if strings.Contains(m.Name, moduleName){
-          user := strings.Split(m.Name, "-")[0]
-          module := strings.Split(m.Name, "-")[1]
-          moduleUri := fmt.Sprintf("/v3/modules/%s", m.Name)
-          releaseUri := fmt.Sprintf("/v3/releases/%s-%s", m.Name, m.Version)
-          // add a new result to the response
-          var result Result
-
-          //populate the owner info
-          owner := Owner{user}
-
-          // populate the current_release
-          var cr CurrentRelease
-          cr.Uri = releaseUri
-          cr.Module.Uri = moduleUri
-          cr.Module.Name = module
-          cr.Module.Owner = owner
-          cr.Version = m.Version
-          cr.Metadata = m
-          cr.Tags = make([]string, 0)
-          cr.FileUri = fmt.Sprintf("v3/files/%s-%s.tar.gz", m.Name, m.Version)
-          cr.FileMd5 = "foo_md5"
-
-          // populate the Result struct
-          result.Uri = moduleUri
-          result.Name = module
-          result.Owner = owner
-          result.CurrentRelease = cr
-          result.Releases = append(result.Releases,
-            Release{
-              Uri: releaseUri,
-              Version: m.Version,
-              Supported: true,
-           })
-
-          resp.Results = append(resp.Results, result)
-
+          if modulesLatest[release.Module.Name] == "" {
+            //new module
+            modulesLatest[release.Module.Name] = release.Version
+            currentRelease = release
+          } else {
+            res, err := CompareVersion(release.Version, currentRelease.Version)
+            if err != nil { http.Error(w, "invalid version number", 500) }
+            if res > 0 {
+              //replace the currentVersion
+              modulesLatest[release.Module.Name] = release.Version
+              currentRelease = release
+            }
+          }
+          //just another lesser version
+          releaseSummaries = append(releaseSummaries, rs)
         }
       }
+      var resp ModulesResponse  // the empty response
+      sort.Sort(sort.Reverse(releaseSummaries))
+      var results = ModulesResult {
+        Uri:   fmt.Sprintf("/v3/modules/%s", currentRelease.Metadata.Name),
+        Name:  currentRelease.Module.Name,
+        Owner: Owner { strings.Split(currentRelease.Metadata.Name, "-")[0] },
+        CurrentRelease: currentRelease,
+        Releases: releaseSummaries,
+      }
+      resp.Results = []ModulesResult{results,}
+
       // write the response json out to the http Response
       b, err := json.Marshal(resp)
       if err != nil {
-        log.Println(err)
+        http.Error(w, "json Marshalling error", 500)
       }
       var buff bytes.Buffer
       json.Indent(&buff, b, "", "\t")
       w.Header().Set("Content-Type", "application/json; charset=utf-8")
       fmt.Fprintf(w, string(buff.Bytes()))
+    } else {
+      http.Error(w, "I'm not going to list all of the modules.", 500)
     }
   }else{
     // find a specific one
