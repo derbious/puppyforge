@@ -3,7 +3,7 @@ package main
 import (
   "encoding/json"
 	"fmt"
-	//"log"
+  "log"
 	"net/http"
   "strings"
   "bytes"
@@ -20,16 +20,13 @@ func ModulesHandler(w http.ResponseWriter, r *http.Request, modulePath string) {
   if r.URL.Path == "/v3/modules" || r.URL.Path == "/v3/modules/" {
     queryParams := r.URL.Query()
     if queryParams["query"] != nil {
-      moduleName := queryParams["query"][0]
+      queryTerm := queryParams["query"][0]
+      moduleResults := make(map[string]ModulesResult)
 
-      var releaseSummaries ReleaseSummaries
-      modulesLatest := make(map[string]string)
-      var currentRelease ModuleRelease
-
+      // go through each release (file) and determine if it is matched by the query
       for _, release := range releases {
-        // if the version is greater than the current release, upgadea
-        // the current release. otherwise, add a new release summary.
-        if release.Metadata.Name == moduleName {
+        if strings.Contains(release.Metadata.Name, queryTerm) {
+          // go ahead and generate the release summary.
           rs := ReleaseSummary {
             Uri: fmt.Sprintf("/v3/modules/%s-%s",
                              release.Module.Name,
@@ -37,34 +34,46 @@ func ModulesHandler(w http.ResponseWriter, r *http.Request, modulePath string) {
             Version: release.Version,
             Supported: true,
           }
-
-          if modulesLatest[release.Module.Name] == "" {
+          existingResult, exists := moduleResults[release.Metadata.Name]
+          if !exists {
             //new module
-            modulesLatest[release.Module.Name] = release.Version
-            currentRelease = release
-          } else {
-            res, err := CompareVersion(release.Version, currentRelease.Version)
+            var results = ModulesResult {
+              Uri:   fmt.Sprintf("/v3/modules/%s", release.Metadata.Name),
+              Name:  release.Module.Name,
+              Owner: Owner { strings.Split(release.Metadata.Name, "-")[0] },
+              CurrentRelease: release,
+              Releases: make(ReleaseSummaries, 0),
+            }
+            results.Releases = append(results.Releases, rs)
+            sort.Sort(sort.Reverse(results.Releases))
+            moduleResults[release.Metadata.Name] = results
+          } else { // existing module
+            res, err := CompareVersion(release.Version, existingResult.CurrentRelease.Version)
             if err != nil { http.Error(w, "invalid version number", 500) }
             if res > 0 {
               //replace the currentVersion
-              modulesLatest[release.Module.Name] = release.Version
-              currentRelease = release
+              existingResult.CurrentRelease = release
+              existingResult.Releases = append(existingResult.Releases, rs)
+              sort.Sort(sort.Reverse(existingResult.Releases))
+            } else {
+              //just another lesser version, just add it to the release summaries
+              existingResult.Releases = append(existingResult.Releases, rs)
+              sort.Sort(sort.Reverse(existingResult.Releases))
             }
+            //Store the existingResult back
+            moduleResults[release.Metadata.Name] = existingResult
           }
-          //just another lesser version
-          releaseSummaries = append(releaseSummaries, rs)
         }
       }
+
       var resp ModulesResponse  // the empty response
-      sort.Sort(sort.Reverse(releaseSummaries))
-      var results = ModulesResult {
-        Uri:   fmt.Sprintf("/v3/modules/%s", currentRelease.Metadata.Name),
-        Name:  currentRelease.Module.Name,
-        Owner: Owner { strings.Split(currentRelease.Metadata.Name, "-")[0] },
-        CurrentRelease: currentRelease,
-        Releases: releaseSummaries,
+      log.Println(len(moduleResults))
+      res := make([]ModulesResult, 0)
+      for  _, v := range moduleResults {
+        res = append(res, v)
       }
-      resp.Results = []ModulesResult{results,}
+      log.Println(len(res))
+      resp.Results = res
 
       // write the response json out to the http Response
       b, err := json.Marshal(resp)
