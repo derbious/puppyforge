@@ -1,36 +1,29 @@
-# go-puppet-forge
+# puppyforge
 
-This is a minimal Go implementation of the Puppet Forge v3 API without external libraries. This project is inspired by [simple-puppet-forge](https://github.com/dalen/simple-puppet-forge).
-No database is required, metadata is stored on disk.
+This is a minimalistic Puppet Forge implementation that implements the v3 forge API based on modules stored on disk. No database is required, just read access to the module files.
 
 ### Installation
-Pre-built binaries [here](http://dl.bintray.com/jhaals/generic/go-puppet-forge/)
+Copy your module .tar.gz files to a directory. `/var/lib/puppyforge/modules/` for example:
 
-Modules must be stored in the following directory structure `user/module/user-module-version.tar.gz`
-example:
+    /var/lib/puppyforge/modules/puppetlabs-apache-1.1.0.tar.gz
 
-    /var/lib/go-puppet-forge/modules/puppetlabs/apache/puppetlabs-apache-1.1.0.tar.gz
+### Running puppyforge
+#### Via the command-line
+Running puppyforge from the command line is useful for development and testing.
 
-__Running go-puppet-forge__
+    $ ./puppyforge --port 8080 --modulepath /var/lib/puppyforge/modules
 
-    $ export MODULEPATH=/var/lib/go-puppet-forge/modules
-    $ export PORT=8080
-    $ ./go-puppet-forge
-    Starting go-puppet-forge on port 8080 serving modules from /var/lib/go-puppet-forge/modules
+#### Via a service
+Usually you will want to run puppyforge via a service. Building the packages for your operating system provides the correct service.
 
+    $ cat /etc/puppyforge.conf
+    $ service puppyforge start
+        
 #### Usage with Puppet
-A custom module_repository can be specified in the puppet config file.
+Once your puppyforge is running, you can configure puppet to use it via the `module_repository` option in the puppet config file.
 
     module_repository=http://my-forge.com/
 
 Or directly on command line
 
-    ~ puppet module install puppetlabs/apache --module_repository http://127.0.0.1:8080 --modulepath modules
-    Notice: Preparing to install into /Users/jhaals/modules ...
-    Notice: Created target directory /Users/jhaals/modules
-    Notice: Downloading from http://127.0.0.1:8080 ...
-    Notice: Installing -- do not interrupt ...
-    /Users/jhaals/modules
-    └─┬ puppetlabs-apache (v1.1.0)
-      ├── puppetlabs-concat (v1.1.0)
-      └── puppetlabs-stdlib (v4.2.2)
+    $ puppet module install puppetlabs/apache --module_repository http://127.0.0.1:8080 --modulepath modules
