@@ -20,7 +20,7 @@ func ReadConfig() (string, string) {
   configfile := flag.String("config", "/etc/puppyforge.conf", "The location of the config file.")
   flag.Parse()
   log.Println(*port, *modpath, *configfile)
-  if configfile != "/etc/puppyforge.conf" {
+  if *configfile != "/etc/puppyforge.conf" {
   }
   return *port, *modpath
 }
