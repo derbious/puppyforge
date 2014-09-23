@@ -3,7 +3,6 @@ package main
 import (
   "encoding/json"
 	"fmt"
-  "log"
 	"net/http"
   "strings"
   "bytes"
@@ -67,12 +66,10 @@ func ModulesHandler(w http.ResponseWriter, r *http.Request, modulePath string) {
       }
 
       var resp ModulesResponse  // the empty response
-      log.Println(len(moduleResults))
       res := make([]ModulesResult, 0)
       for  _, v := range moduleResults {
         res = append(res, v)
       }
-      log.Println(len(res))
       resp.Results = res
 
       // write the response json out to the http Response
