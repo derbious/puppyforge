@@ -14,7 +14,11 @@ cent6:
 	cp centos/6/puppyforge.conf tmp/etc/puppyforge.conf
 	cp centos/6/puppyforge.init tmp/etc/init.d/puppyforge
 	chmod +x tmp/etc/init.d/puppyforge
-	#fpm -f -n puppyforge -s dir -t rpm \
-	  --workdir tmp \
- 		--version `git describe --tags --long`
+	fpm -C tmp -f -n puppyforge -s dir -t rpm \
+	--description 'A minimal puppet forge server' \
+ 	--version `git describe --tags --long` \
+	--config-files etc/puppyforge.conf \
+	--url 'https://github.com/derbious/puppyforge' \
+	usr/ etc/
+	rm -rf tmp
 
