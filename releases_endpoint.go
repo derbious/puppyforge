@@ -10,9 +10,10 @@ import (
 
 func ReleasesHandler(w http.ResponseWriter, r *http.Request, modulePath string) {
 	moduleName := r.URL.Query().Get("module")
-	if !strings.Contains(moduleName, "-") {
-		http.Error(w, "request must be /v3/releases?module=user-module", 400)
-	}
+  if moduleName == "" || !strings.Contains(moduleName, "-") {
+    http.Error(w, "request must be /v3/releases?module=user-module", 400)
+    return
+  }
   modnameArray := strings.Split(moduleName, "-")
 	user := modnameArray[0]
 	mod := modnameArray[1]
